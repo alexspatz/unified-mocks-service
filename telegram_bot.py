@@ -328,7 +328,8 @@ async def handle_manual_response(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     # Store response for the waiting request
-    context.application.bot_data[f"response_{request_id}"] = response
+    response_key = f"manual_response_{request_id}"
+    storage.manual_responses[response_key] = response
 
     emoji = "✅" if response == "SUCCESS" else "❌"
     await query.edit_message_text(
@@ -337,8 +338,6 @@ async def handle_manual_response(update: Update, context: ContextTypes.DEFAULT_T
         f"Response: {response}",
         parse_mode="Markdown"
     )
-
-    storage.remove_pending_request(request_id)
 
 
 async def send_manual_request_notification(service: str, request_id: str, request_data: dict):

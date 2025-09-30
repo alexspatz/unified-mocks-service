@@ -26,6 +26,7 @@ class InMemoryStorage:
 
         self.logs: deque = deque(maxlen=1000)
         self.pending_requests: Dict[str, PendingRequest] = {}
+        self.manual_responses: Dict[str, str] = {}  # Store manual responses
 
         # Counters for generating IDs
         self.payment_id_counter = 1809

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import uuid
 import random
+import asyncio
 from typing import Union
 from models import (
     PaymentRequest, PaymentResponse,
@@ -9,6 +10,13 @@ from models import (
     ServiceMode, LogEntry, PendingRequest
 )
 from storage import storage
+
+# Global reference to bot for sending messages
+_bot_app = None
+
+def set_bot_application(app):
+    global _bot_app
+    _bot_app = app
 
 
 def generate_session_id(order_id: int) -> str:
@@ -45,7 +53,7 @@ async def handle_payment_request(request: PaymentRequest) -> PaymentResponse:
     config = storage.get_config("payment")
 
     # Determine response type based on mode
-    should_succeed = await determine_response("payment", config)
+    should_succeed = await determine_response("payment", config, request.dict())
 
     payment_id = storage.get_next_payment_id()
     session_id = generate_session_id(request.order_id)
@@ -111,13 +119,16 @@ async def handle_payment_request(request: PaymentRequest) -> PaymentResponse:
     )
     storage.add_log(log)
 
+    # Send instant notification
+    await send_log_notification(log)
+
     return response
 
 
 async def handle_fiscal_request(request: FiscalRequest) -> Union[FiscalSuccessResponse, FiscalFailureResponse]:
     config = storage.get_config("fiscal")
 
-    should_succeed = await determine_response("fiscal", config)
+    should_succeed = await determine_response("fiscal", config, request.dict())
 
     now = datetime.now(timezone.utc)
 
@@ -167,13 +178,16 @@ async def handle_fiscal_request(request: FiscalRequest) -> Union[FiscalSuccessRe
     )
     storage.add_log(log)
 
+    # Send instant notification
+    await send_log_notification(log)
+
     return response
 
 
 async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, KDSFailureResponse]:
     config = storage.get_config("kds")
 
-    should_succeed = await determine_response("kds", config)
+    should_succeed = await determine_response("kds", config, request.dict())
 
     now = datetime.now(timezone.utc)
 
@@ -201,10 +215,13 @@ async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, K
     )
     storage.add_log(log)
 
+    # Send instant notification
+    await send_log_notification(log)
+
     return response
 
 
-async def determine_response(service: str, config) -> bool:
+async def determine_response(service: str, config, request_data: dict = None) -> bool:
     """Determine if the response should be successful based on the service mode"""
     if config.mode == ServiceMode.AUTO_SUCCESS:
         return True
@@ -219,13 +236,102 @@ async def determine_response(service: str, config) -> bool:
         pending = PendingRequest(
             request_id=request_id,
             service=service,
-            request_data={},
+            request_data=request_data or {},
             created_at=datetime.now(timezone.utc)
         )
         storage.add_pending_request(pending)
 
-        # This will be handled by Telegram bot
-        # For now, return default after timeout (will be improved with async handling)
+        # Send notification to Telegram
+        if _bot_app:
+            await send_manual_request_notification(service, request_id, request_data or {})
+
+        # Wait for response with timeout
+        timeout = config.timeout_seconds
+        start_time = datetime.now(timezone.utc)
+
+        while (datetime.now(timezone.utc) - start_time).total_seconds() < timeout:
+            # Check if response received
+            response_key = f"manual_response_{request_id}"
+            if response_key in storage.manual_responses:
+                response = storage.manual_responses[response_key]
+                del storage.manual_responses[response_key]
+                storage.remove_pending_request(request_id)
+                return response == "SUCCESS" or response == "OK"
+
+            await asyncio.sleep(0.5)
+
+        # Timeout - use default response
+        storage.remove_pending_request(request_id)
         return config.default_response == "SUCCESS" or config.default_response == "OK"
 
     return True
+
+
+async def send_manual_request_notification(service: str, request_id: str, request_data: dict):
+    """Send notification to Telegram for manual handling"""
+    if not _bot_app:
+        return
+
+    from telegram_bot import TELEGRAM_CHAT_ID
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    if not TELEGRAM_CHAT_ID:
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Success", callback_data=f"manual_{request_id}_SUCCESS"),
+            InlineKeyboardButton("❌ Failure", callback_data=f"manual_{request_id}_FAILURE")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Format request data
+    data_str = "\n".join([f"  {k}: {v}" for k, v in request_data.items()])
+
+    text = (
+        f"👤 *Manual Request - {service.upper()}*\n\n"
+        f"Request ID: `{request_id}`\n"
+        f"Time: {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}\n\n"
+        f"*Request Data:*\n{data_str}\n\n"
+        f"Choose response:"
+    )
+
+    try:
+        await _bot_app.bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Error sending manual request notification: {e}")
+
+
+async def send_log_notification(log: LogEntry):
+    """Send log notification to admin via Telegram"""
+    if not _bot_app:
+        return
+
+    from telegram_bot import TELEGRAM_CHAT_ID
+
+    if not TELEGRAM_CHAT_ID:
+        return
+
+    emoji = "✅" if log.status in ["SUCCESS", "OK"] else "❌"
+    time = datetime.fromisoformat(log.timestamp).strftime("%H:%M:%S")
+
+    text = (
+        f"{emoji} *{log.service.upper()}* - {log.status}\n"
+        f"Time: `{time}`\n"
+        f"Mode: `{log.mode}`"
+    )
+
+    try:
+        await _bot_app.bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=text,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Error sending log notification: {e}")

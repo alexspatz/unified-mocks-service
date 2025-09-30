@@ -10,9 +10,9 @@ from models import (
     KDSRequest, KDSSuccessResponse, KDSFailureResponse,
     ConfigUpdateRequest, LogEntry, ServiceConfig
 )
-from mocks import handle_payment_request, handle_fiscal_request, handle_kds_request
+from mocks import handle_payment_request, handle_fiscal_request, handle_kds_request, set_bot_application
 from storage import storage
-from telegram_bot import start_bot, stop_bot
+from telegram_bot import start_bot, stop_bot, bot_application
 
 
 @asynccontextmanager
@@ -21,6 +21,11 @@ async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting Unified Mocks Service...")
     await start_bot()
+
+    # Set bot application for mocks to use
+    if bot_application:
+        set_bot_application(bot_application)
+
     print("✅ Service started")
 
     yield
