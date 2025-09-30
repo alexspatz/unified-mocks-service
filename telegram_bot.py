@@ -418,10 +418,18 @@ async def start_bot():
         print("⚠️ TELEGRAM_BOT_TOKEN not set, bot disabled")
         return
 
+    if not TELEGRAM_ADMIN_IDS:
+        print("⚠️ TELEGRAM_ADMIN_IDS not set, bot will not work properly")
+
+    print(f"🤖 Starting Telegram bot...")
+    print(f"   Token: {TELEGRAM_BOT_TOKEN[:20]}...")
+    print(f"   Admin IDs: {TELEGRAM_ADMIN_IDS}")
+
     bot_application = create_bot_application()
     await bot_application.initialize()
     await bot_application.start()
     await bot_application.updater.start_polling()
+    print("✅ Telegram bot started successfully")
 
 
 async def stop_bot():
@@ -432,3 +440,8 @@ async def stop_bot():
         await bot_application.updater.stop()
         await bot_application.stop()
         await bot_application.shutdown()
+
+
+def get_bot_application() -> Optional[Application]:
+    """Get the current bot application instance"""
+    return bot_application

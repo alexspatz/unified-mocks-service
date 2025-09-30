@@ -270,12 +270,14 @@ async def determine_response(service: str, config, request_data: dict = None) ->
 async def send_manual_request_notification(service: str, request_id: str, request_data: dict):
     """Send notification to Telegram for manual handling"""
     if not _bot_app:
+        print("⚠️ Bot application not set")
         return
 
-    from telegram_bot import TELEGRAM_CHAT_ID
+    from telegram_bot import TELEGRAM_ADMIN_IDS
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-    if not TELEGRAM_CHAT_ID:
+    if not TELEGRAM_ADMIN_IDS:
+        print("⚠️ No admin IDs configured")
         return
 
     keyboard = [
@@ -297,15 +299,18 @@ async def send_manual_request_notification(service: str, request_id: str, reques
         f"Choose response:"
     )
 
-    try:
-        await _bot_app.bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        print(f"Error sending manual request notification: {e}")
+    # Send to all admins
+    for admin_id in TELEGRAM_ADMIN_IDS:
+        try:
+            await _bot_app.bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+            print(f"✅ Sent manual request to admin {admin_id}")
+        except Exception as e:
+            print(f"❌ Error sending manual request notification to {admin_id}: {e}")
 
 
 async def send_log_notification(log: LogEntry):
@@ -313,9 +318,9 @@ async def send_log_notification(log: LogEntry):
     if not _bot_app:
         return
 
-    from telegram_bot import TELEGRAM_CHAT_ID
+    from telegram_bot import TELEGRAM_ADMIN_IDS
 
-    if not TELEGRAM_CHAT_ID:
+    if not TELEGRAM_ADMIN_IDS:
         return
 
     emoji = "✅" if log.status in ["SUCCESS", "OK"] else "❌"
@@ -327,11 +332,13 @@ async def send_log_notification(log: LogEntry):
         f"Mode: `{log.mode}`"
     )
 
-    try:
-        await _bot_app.bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=text,
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        print(f"Error sending log notification: {e}")
+    # Send to all admins
+    for admin_id in TELEGRAM_ADMIN_IDS:
+        try:
+            await _bot_app.bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Error sending log notification to {admin_id}: {e}")

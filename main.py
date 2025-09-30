@@ -12,7 +12,8 @@ from models import (
 )
 from mocks import handle_payment_request, handle_fiscal_request, handle_kds_request, set_bot_application
 from storage import storage
-from telegram_bot import start_bot, stop_bot, bot_application
+from telegram_bot import start_bot, stop_bot, get_bot_application
+import asyncio
 
 
 @asynccontextmanager
@@ -22,9 +23,16 @@ async def lifespan(app: FastAPI):
     print("🚀 Starting Unified Mocks Service...")
     await start_bot()
 
+    # Give bot a moment to fully initialize
+    await asyncio.sleep(1)
+
     # Set bot application for mocks to use
-    if bot_application:
-        set_bot_application(bot_application)
+    bot_app = get_bot_application()
+    if bot_app:
+        set_bot_application(bot_app)
+        print("✅ Bot application linked to mocks")
+    else:
+        print("⚠️ Bot application not available")
 
     print("✅ Service started")
 
