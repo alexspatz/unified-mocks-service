@@ -3,11 +3,12 @@ import uuid
 import random
 import asyncio
 from typing import Union
+from fastapi import HTTPException
 from models import (
     PaymentRequest, PaymentResponse,
     FiscalRequest, FiscalSuccessResponse, FiscalFailureResponse, FiscalReceipt, FiscalReceiptItem,
     KDSRequest, KDSSuccessResponse, KDSFailureResponse,
-    ServiceMode, LogEntry, PendingRequest
+    ServiceMode, LogEntry, PendingRequest, ResponseStatus
 )
 from storage import storage
 
@@ -53,7 +54,13 @@ async def handle_payment_request(request: PaymentRequest) -> PaymentResponse:
     config = storage.get_config("payment")
 
     # Determine response type based on mode
-    should_succeed = await determine_response("payment", config, request.dict())
+    response_status = await determine_response("payment", config, request.dict())
+
+    # Check for service unavailable
+    if response_status == ResponseStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+    should_succeed = response_status == ResponseStatus.SUCCESS
 
     payment_id = storage.get_next_payment_id()
     session_id = generate_session_id(request.order_id)
@@ -128,7 +135,14 @@ async def handle_payment_request(request: PaymentRequest) -> PaymentResponse:
 async def handle_fiscal_request(request: FiscalRequest) -> Union[FiscalSuccessResponse, FiscalFailureResponse]:
     config = storage.get_config("fiscal")
 
-    should_succeed = await determine_response("fiscal", config, request.dict())
+    # Determine response type based on mode
+    response_status = await determine_response("fiscal", config, request.dict())
+
+    # Check for service unavailable
+    if response_status == ResponseStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+    should_succeed = response_status == ResponseStatus.SUCCESS
 
     now = datetime.now(timezone.utc)
 
@@ -187,7 +201,14 @@ async def handle_fiscal_request(request: FiscalRequest) -> Union[FiscalSuccessRe
 async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, KDSFailureResponse]:
     config = storage.get_config("kds")
 
-    should_succeed = await determine_response("kds", config, request.dict())
+    # Determine response type based on mode
+    response_status = await determine_response("kds", config, request.dict())
+
+    # Check for service unavailable
+    if response_status == ResponseStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+    should_succeed = response_status == ResponseStatus.SUCCESS
 
     now = datetime.now(timezone.utc)
 
@@ -221,15 +242,15 @@ async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, K
     return response
 
 
-async def determine_response(service: str, config, request_data: dict = None) -> bool:
+async def determine_response(service: str, config, request_data: dict = None) -> ResponseStatus:
     """Determine if the response should be successful based on the service mode"""
     if config.mode == ServiceMode.AUTO_SUCCESS:
-        return True
+        return ResponseStatus.SUCCESS
     elif config.mode == ServiceMode.AUTO_FAILURE:
-        return False
+        return ResponseStatus.FAILURE
     elif config.mode == ServiceMode.SEQUENCE:
         response = storage.get_next_sequence_response(service)
-        return response == "SUCCESS"
+        return ResponseStatus.SUCCESS if response == "SUCCESS" else ResponseStatus.FAILURE
     elif config.mode == ServiceMode.MANUAL:
         # Create pending request for manual handling
         request_id = str(uuid.uuid4())
@@ -256,15 +277,25 @@ async def determine_response(service: str, config, request_data: dict = None) ->
                 response = storage.manual_responses[response_key]
                 del storage.manual_responses[response_key]
                 storage.remove_pending_request(request_id)
-                return response == "SUCCESS" or response == "OK"
+
+                # Map response to ResponseStatus
+                if response == "UNAVAILABLE":
+                    return ResponseStatus.UNAVAILABLE
+                elif response in ["SUCCESS", "OK"]:
+                    return ResponseStatus.SUCCESS
+                else:
+                    return ResponseStatus.FAILURE
 
             await asyncio.sleep(0.5)
 
         # Timeout - use default response
         storage.remove_pending_request(request_id)
-        return config.default_response == "SUCCESS" or config.default_response == "OK"
+        if config.default_response in ["SUCCESS", "OK"]:
+            return ResponseStatus.SUCCESS
+        else:
+            return ResponseStatus.FAILURE
 
-    return True
+    return ResponseStatus.SUCCESS
 
 
 async def send_manual_request_notification(service: str, request_id: str, request_data: dict):
@@ -284,6 +315,9 @@ async def send_manual_request_notification(service: str, request_id: str, reques
         [
             InlineKeyboardButton("✅ Success", callback_data=f"manual_{request_id}_SUCCESS"),
             InlineKeyboardButton("❌ Failure", callback_data=f"manual_{request_id}_FAILURE")
+        ],
+        [
+            InlineKeyboardButton("⚠️ Service Unavailable", callback_data=f"manual_{request_id}_UNAVAILABLE")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)

@@ -11,6 +11,12 @@ class ServiceMode(str, Enum):
     SEQUENCE = "SEQUENCE"
 
 
+class ResponseStatus(str, Enum):
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
 class SequenceConfig(BaseModel):
     success_count: int
     failure_count: int
