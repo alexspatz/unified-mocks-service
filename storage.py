@@ -15,12 +15,17 @@ class InMemoryStorage:
             "fiscal": ServiceConfig(
                 mode=ServiceMode.AUTO_SUCCESS,
                 timeout_seconds=30,
-                default_response="OK"
+                default_response="SUCCESS"
             ),
             "kds": ServiceConfig(
                 mode=ServiceMode.AUTO_SUCCESS,
                 timeout_seconds=30,
                 default_response="OK"
+            ),
+            "printer": ServiceConfig(
+                mode=ServiceMode.AUTO_SUCCESS,
+                timeout_seconds=30,
+                default_response="SUCCESS"
             )
         }
 

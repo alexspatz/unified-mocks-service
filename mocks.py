@@ -8,7 +8,9 @@ from models import (
     PaymentRequest, PaymentResponse,
     FiscalRequest, FiscalSuccessResponse, FiscalFailureResponse, FiscalReceipt, FiscalReceiptItem,
     KDSRequest, KDSSuccessResponse, KDSFailureResponse,
-    ServiceMode, LogEntry, PendingRequest, ResponseStatus
+    ServiceMode, LogEntry, PendingRequest, ResponseStatus,
+    NewFiscalParams, NewFiscalError, NewFiscalSuccessResponse, NewFiscalFailureResponse,
+    PrinterSuccessResponse, PrinterFailureResponse
 )
 from storage import storage
 
@@ -187,6 +189,146 @@ async def handle_fiscal_request(request: FiscalRequest) -> Union[FiscalSuccessRe
         service="fiscal",
         request=request.dict(),
         response=response.dict(),
+        mode=config.mode.value,
+        status=status
+    )
+    storage.add_log(log)
+
+    # Send instant notification
+    await send_log_notification(log)
+
+    return response
+
+
+def extract_total_from_request(request_data: dict) -> float:
+    """Extract total amount from various request formats"""
+    # Try payments sum first (new format)
+    if "payments" in request_data and isinstance(request_data["payments"], list):
+        total = sum(p.get("sum", 0) for p in request_data["payments"])
+        if total > 0:
+            return total
+
+    # Try items amount (new format)
+    if "items" in request_data and isinstance(request_data["items"], list):
+        total = sum(item.get("amount", 0) for item in request_data["items"])
+        if total > 0:
+            return total
+
+    # Try total_gross (old format)
+    if "total_gross" in request_data:
+        return float(request_data["total_gross"])
+
+    # Try total field
+    if "total" in request_data:
+        return float(request_data["total"])
+
+    # Default random total
+    return round(random.uniform(100, 1000), 2)
+
+
+async def handle_new_fiscal_request(request_data: dict) -> dict:
+    """
+    Handle fiscal request in new format (tolerant to any input).
+    Returns response matching real API format.
+    """
+    config = storage.get_config("fiscal")
+
+    # Determine response type based on mode
+    response_status = await determine_response("fiscal", config, request_data)
+
+    # Check for service unavailable
+    if response_status == ResponseStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+    should_succeed = response_status == ResponseStatus.SUCCESS
+
+    now = datetime.now(timezone.utc)
+
+    # Extract total from request (tolerant parsing)
+    total = extract_total_from_request(request_data)
+
+    if should_succeed:
+        response = {
+            "success": True,
+            "error": None,
+            "fiscalParams": {
+                "total": total,
+                "fnNumber": f"{random.randint(1000000000000000, 9999999999999999)}",
+                "registrationNumber": f"{random.randint(1, 9999999999999999):016d}",
+                "fiscalDocumentNumber": random.randint(1, 9999),
+                "fiscalReceiptNumber": random.randint(1, 999),
+                "fiscalDocumentSign": str(random.randint(1000000000, 9999999999)),
+                "fiscalDocumentDateTime": now.strftime("%Y-%m-%dT%H:%M:%S"),
+                "shiftNumber": random.randint(1, 100),
+                "fnsUrl": "www.nalog.gov.ru"
+            }
+        }
+        status = "SUCCESS"
+    else:
+        response = {
+            "success": False,
+            "error": {
+                "code": 44,
+                "message": "Нет связи"
+            },
+            "fiscalParams": None
+        }
+        status = "FAILURE"
+
+    # Log the request
+    log = LogEntry(
+        timestamp=now.isoformat(),
+        service="fiscal",
+        request=request_data,
+        response=response,
+        mode=config.mode.value,
+        status=status
+    )
+    storage.add_log(log)
+
+    # Send instant notification
+    await send_log_notification(log)
+
+    return response
+
+
+async def handle_printer_request(request_data: dict) -> dict:
+    """
+    Handle printer request (tolerant to any input).
+    Returns response matching real API format.
+    """
+    config = storage.get_config("printer")
+
+    # Determine response type based on mode
+    response_status = await determine_response("printer", config, request_data)
+
+    # Check for service unavailable
+    if response_status == ResponseStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+    should_succeed = response_status == ResponseStatus.SUCCESS
+
+    now = datetime.now(timezone.utc)
+
+    if should_succeed:
+        response = {
+            "success": True,
+            "error": None
+        }
+        status = "SUCCESS"
+    else:
+        response = {
+            "success": False,
+            "error": "Printer communication error"
+        }
+        status = "FAILURE"
+
+    # Log the request
+    log = LogEntry(
+        timestamp=now.isoformat(),
+        service="printer",
+        request=request_data,
+        response=response,
         mode=config.mode.value,
         status=status
     )

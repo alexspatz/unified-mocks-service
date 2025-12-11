@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import Union
@@ -10,7 +10,10 @@ from models import (
     KDSRequest, KDSSuccessResponse, KDSFailureResponse,
     ConfigUpdateRequest, LogEntry, ServiceConfig
 )
-from mocks import handle_payment_request, handle_fiscal_request, handle_kds_request, set_bot_application
+from mocks import (
+    handle_payment_request, handle_fiscal_request, handle_kds_request,
+    handle_new_fiscal_request, handle_printer_request, set_bot_application
+)
 from storage import storage
 from telegram_bot import start_bot, stop_bot, get_bot_application
 import asyncio
@@ -69,7 +72,9 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "payment": "/mocks/payment",
-            "fiscal": "/mocks/fiscal",
+            "fiscal": "/mocks/fiscal (old format)",
+            "fiscal_receipt": "/mocks/fiscal_receipt (new format - tolerant)",
+            "printer": "/mocks/printer",
             "kds": "/mocks/kds",
             "config": "/mocks/config",
             "logs": "/mocks/logs"
@@ -98,17 +103,65 @@ async def payment_mock(request: PaymentRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Fiscal Mock Endpoint
+# Fiscal Mock Endpoint (old format)
 @app.post("/mocks/fiscal", response_model=Union[FiscalSuccessResponse, FiscalFailureResponse])
 async def fiscal_mock(request: FiscalRequest):
     """
-    Fiscal Edge Mock Endpoint
+    Fiscal Edge Mock Endpoint (OLD FORMAT)
 
     Simulates fiscal printer behavior with configurable responses.
     """
     try:
         response = await handle_fiscal_request(request)
         return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# NEW Fiscal Mock Endpoint (tolerant to any format)
+@app.post("/mocks/fiscal_receipt")
+async def fiscal_receipt_mock(request: Request):
+    """
+    Fiscal Receipt Mock Endpoint (NEW FORMAT - Tolerant)
+
+    Accepts ANY JSON format and returns response matching real API.
+    Logs all incoming requests regardless of format.
+    """
+    try:
+        # Parse body as JSON, default to empty dict if fails
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        response = await handle_new_fiscal_request(body)
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Printer Mock Endpoint
+@app.post("/mocks/printer")
+async def printer_mock(request: Request):
+    """
+    Printer Mock Endpoint (Tolerant)
+
+    Accepts ANY JSON format and returns response matching real API.
+    Logs all incoming requests regardless of format.
+    """
+    try:
+        # Parse body as JSON, default to empty dict if fails
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        response = await handle_printer_request(body)
+        return response
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -165,6 +218,10 @@ async def update_config(request: ConfigUpdateRequest):
         storage.update_config("kds", request.kds)
         updated.append("kds")
 
+    if request.printer:
+        storage.update_config("printer", request.printer)
+        updated.append("printer")
+
     return {
         "status": "ok",
         "updated": updated,
@@ -220,6 +277,18 @@ async def kds_status():
     config = storage.get_config("kds")
     return {
         "service": "kds",
+        "mode": config.mode.value,
+        "timeout_seconds": config.timeout_seconds,
+        "default_response": config.default_response
+    }
+
+
+@app.get("/mocks/printer/status")
+async def printer_status():
+    """Get Printer service status"""
+    config = storage.get_config("printer")
+    return {
+        "service": "printer",
         "mode": config.mode.value,
         "timeout_seconds": config.timeout_seconds,
         "default_response": config.default_response

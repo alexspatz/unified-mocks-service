@@ -58,6 +58,7 @@ class PaymentResponse(BaseModel):
     merchant_receipt: Optional[str] = None
 
 
+# Old fiscal models (kept for backwards compatibility)
 class FiscalItem(BaseModel):
     item_id: int
     item_description: str
@@ -110,6 +111,47 @@ class FiscalFailureResponse(BaseModel):
     error_message: str
 
 
+# New fiscal models (matching real API format)
+class NewFiscalParams(BaseModel):
+    total: float
+    fnNumber: str
+    registrationNumber: str
+    fiscalDocumentNumber: int
+    fiscalReceiptNumber: int
+    fiscalDocumentSign: str
+    fiscalDocumentDateTime: str
+    shiftNumber: int
+    fnsUrl: str
+
+
+class NewFiscalError(BaseModel):
+    code: int
+    message: str
+
+
+class NewFiscalSuccessResponse(BaseModel):
+    success: bool = True
+    error: Optional[Any] = None
+    fiscalParams: NewFiscalParams
+
+
+class NewFiscalFailureResponse(BaseModel):
+    success: bool = False
+    error: NewFiscalError
+    fiscalParams: Optional[Any] = None
+
+
+# Printer models
+class PrinterSuccessResponse(BaseModel):
+    success: bool = True
+    error: Optional[Any] = None
+
+
+class PrinterFailureResponse(BaseModel):
+    success: bool = False
+    error: str
+
+
 class KDSItem(BaseModel):
     item_id: int
     description: str
@@ -147,6 +189,7 @@ class ConfigUpdateRequest(BaseModel):
     payment: Optional[ServiceConfig] = None
     fiscal: Optional[ServiceConfig] = None
     kds: Optional[ServiceConfig] = None
+    printer: Optional[ServiceConfig] = None
 
 
 class PendingRequest(BaseModel):

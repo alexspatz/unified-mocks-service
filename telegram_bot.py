@@ -98,6 +98,7 @@ async def config_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💳 Payment", callback_data="service_payment")],
         [InlineKeyboardButton("🧾 Fiscal", callback_data="service_fiscal")],
+        [InlineKeyboardButton("🖨 Printer", callback_data="service_printer")],
         [InlineKeyboardButton("🍽 KDS", callback_data="service_kds")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
     ]
@@ -167,7 +168,7 @@ async def select_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = ServiceConfig(
         mode=ServiceMode(mode),
         timeout_seconds=30,
-        default_response="SUCCESS" if service == "payment" else "OK"
+        default_response="SUCCESS" if service in ["payment", "fiscal", "printer"] else "OK"
     )
     storage.update_config(service, config)
 
@@ -190,7 +191,7 @@ async def input_sequence(update: Update, context: ContextTypes.DEFAULT_TYPE):
         config = ServiceConfig(
             mode=ServiceMode.SEQUENCE,
             timeout_seconds=30,
-            default_response="SUCCESS" if service == "payment" else "OK",
+            default_response="SUCCESS" if service in ["payment", "fiscal", "printer"] else "OK",
             sequence_config=SequenceConfig(
                 success_count=success_count,
                 failure_count=failure_count
@@ -248,11 +249,11 @@ async def config_all_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     mode = query.data.replace("all_", "")
 
-    for service in ["payment", "fiscal", "kds"]:
+    for service in ["payment", "fiscal", "kds", "printer"]:
         config = ServiceConfig(
             mode=ServiceMode(mode),
             timeout_seconds=30,
-            default_response="SUCCESS" if service == "payment" else "OK"
+            default_response="SUCCESS" if service in ["payment", "fiscal", "printer"] else "OK"
         )
         storage.update_config(service, config)
 
