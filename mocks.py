@@ -55,6 +55,10 @@ def generate_receipt_text() -> str:
 async def handle_payment_request(request: PaymentRequest) -> PaymentResponse:
     config = storage.get_config("payment")
 
+    # Apply delay if configured
+    if config.delay_seconds > 0:
+        await asyncio.sleep(config.delay_seconds)
+
     # Determine response type based on mode
     response_status = await determine_response("payment", config, request.dict())
 
@@ -233,6 +237,10 @@ async def handle_new_fiscal_request(request_data: dict) -> dict:
     """
     config = storage.get_config("fiscal")
 
+    # Apply delay if configured
+    if config.delay_seconds > 0:
+        await asyncio.sleep(config.delay_seconds)
+
     # Determine response type based on mode
     response_status = await determine_response("fiscal", config, request_data)
 
@@ -299,6 +307,10 @@ async def handle_printer_request(request_data: dict) -> dict:
     """
     config = storage.get_config("printer")
 
+    # Apply delay if configured
+    if config.delay_seconds > 0:
+        await asyncio.sleep(config.delay_seconds)
+
     # Determine response type based on mode
     response_status = await determine_response("printer", config, request_data)
 
@@ -342,6 +354,10 @@ async def handle_printer_request(request_data: dict) -> dict:
 
 async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, KDSFailureResponse]:
     config = storage.get_config("kds")
+
+    # Apply delay if configured
+    if config.delay_seconds > 0:
+        await asyncio.sleep(config.delay_seconds)
 
     # Determine response type based on mode
     response_status = await determine_response("kds", config, request.dict())

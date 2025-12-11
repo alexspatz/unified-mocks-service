@@ -76,6 +76,7 @@ async def status_detailed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         emoji = "✅" if config.mode == ServiceMode.AUTO_SUCCESS else "❌" if config.mode == ServiceMode.AUTO_FAILURE else "👤" if config.mode == ServiceMode.MANUAL else "🔄"
         status_text += f"{emoji} *{service_name.upper()}*\n"
         status_text += f"  Mode: `{config.mode.value}`\n"
+        status_text += f"  Delay: {config.delay_seconds}s\n"
         status_text += f"  Timeout: {config.timeout_seconds}s\n"
         status_text += f"  Default: {config.default_response}\n"
 
@@ -299,6 +300,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status\\_detailed - Detailed status with sequences\n"
         "/config - Configure individual service\n"
         "/config\\_all - Configure all services\n"
+        "/delay - Set response delay for services\n"
         "/logs \\[N\\] - Show last N logs (default 10, max 50)\n"
         "/help - This help message\n\n"
         "*Modes:*\n"
@@ -306,6 +308,108 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌ AUTO\\_FAILURE - Always return failure\n"
         "👤 MANUAL - Manual approval via Telegram\n"
         "🔄 SEQUENCE - Configurable success/failure sequence",
+        parse_mode="Markdown"
+    )
+
+
+async def delay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set delay for services"""
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Access denied")
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("💳 Payment", callback_data="delay_payment")],
+        [InlineKeyboardButton("🧾 Fiscal", callback_data="delay_fiscal")],
+        [InlineKeyboardButton("🖨 Printer", callback_data="delay_printer")],
+        [InlineKeyboardButton("🍽 KDS", callback_data="delay_kds")],
+        [InlineKeyboardButton("🌐 All Services", callback_data="delay_all")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="delay_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Show current delays
+    configs = storage.get_all_configs()
+    delays_text = "\n".join([f"  {s.upper()}: {c.delay_seconds}s" for s, c in configs.items()])
+
+    await update.message.reply_text(
+        f"⏱ *Response Delay Configuration*\n\n"
+        f"*Current delays:*\n{delays_text}\n\n"
+        f"Select service to configure:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def delay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle delay configuration callback"""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "delay_cancel":
+        await query.edit_message_text("❌ Delay configuration cancelled")
+        return
+
+    # Extract service from callback
+    service = query.data.replace("delay_", "")
+    context.user_data["delay_service"] = service
+
+    keyboard = [
+        [
+            InlineKeyboardButton("0s", callback_data="setdelay_0"),
+            InlineKeyboardButton("5s", callback_data="setdelay_5"),
+            InlineKeyboardButton("10s", callback_data="setdelay_10")
+        ],
+        [
+            InlineKeyboardButton("15s", callback_data="setdelay_15"),
+            InlineKeyboardButton("30s", callback_data="setdelay_30"),
+            InlineKeyboardButton("45s", callback_data="setdelay_45")
+        ],
+        [
+            InlineKeyboardButton("60s", callback_data="setdelay_60"),
+            InlineKeyboardButton("90s", callback_data="setdelay_90"),
+            InlineKeyboardButton("120s", callback_data="setdelay_120")
+        ],
+        [InlineKeyboardButton("« Back", callback_data="delay_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    service_name = "All Services" if service == "all" else service.upper()
+    await query.edit_message_text(
+        f"⏱ *Set Delay for {service_name}*\n\n"
+        f"Select delay duration:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def setdelay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle setting the actual delay value"""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "delay_back":
+        # Go back to service selection
+        return await delay_command(update, context)
+
+    delay = int(query.data.replace("setdelay_", ""))
+    service = context.user_data.get("delay_service", "all")
+
+    if service == "all":
+        services = ["payment", "fiscal", "kds", "printer"]
+    else:
+        services = [service]
+
+    for svc in services:
+        config = storage.get_config(svc)
+        config.delay_seconds = delay
+        storage.update_config(svc, config)
+
+    service_name = "All Services" if service == "all" else service.upper()
+    await query.edit_message_text(
+        f"✅ *Delay Updated*\n\n"
+        f"Service: {service_name}\n"
+        f"Delay: {delay} seconds",
         parse_mode="Markdown"
     )
 
@@ -400,6 +504,11 @@ def create_bot_application() -> Application:
     # Config all handler
     application.add_handler(CommandHandler("config_all", config_all))
     application.add_handler(CallbackQueryHandler(config_all_callback, pattern="^all_"))
+
+    # Delay handlers
+    application.add_handler(CommandHandler("delay", delay_command))
+    application.add_handler(CallbackQueryHandler(delay_callback, pattern="^delay_"))
+    application.add_handler(CallbackQueryHandler(setdelay_callback, pattern="^setdelay_"))
 
     # Manual response handler
     application.add_handler(CallbackQueryHandler(handle_manual_response, pattern="^manual_"))

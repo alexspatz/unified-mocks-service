@@ -28,6 +28,7 @@ class ServiceConfig(BaseModel):
     timeout_seconds: int = 30
     default_response: str = "SUCCESS"
     sequence_config: Optional[SequenceConfig] = None
+    delay_seconds: int = 0
 
 
 class PaymentRequest(BaseModel):
