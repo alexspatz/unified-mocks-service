@@ -357,16 +357,20 @@ async def delay_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton("0s", callback_data="setdelay_0"),
+            InlineKeyboardButton("2s", callback_data="setdelay_2"),
+            InlineKeyboardButton("3s", callback_data="setdelay_3")
+        ],
+        [
             InlineKeyboardButton("5s", callback_data="setdelay_5"),
-            InlineKeyboardButton("10s", callback_data="setdelay_10")
+            InlineKeyboardButton("10s", callback_data="setdelay_10"),
+            InlineKeyboardButton("15s", callback_data="setdelay_15")
         ],
         [
-            InlineKeyboardButton("15s", callback_data="setdelay_15"),
             InlineKeyboardButton("30s", callback_data="setdelay_30"),
-            InlineKeyboardButton("45s", callback_data="setdelay_45")
+            InlineKeyboardButton("45s", callback_data="setdelay_45"),
+            InlineKeyboardButton("60s", callback_data="setdelay_60")
         ],
         [
-            InlineKeyboardButton("60s", callback_data="setdelay_60"),
             InlineKeyboardButton("90s", callback_data="setdelay_90"),
             InlineKeyboardButton("120s", callback_data="setdelay_120")
         ],
