@@ -352,7 +352,11 @@ async def handle_printer_request(request_data: dict) -> dict:
     return response
 
 
-async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, KDSFailureResponse]:
+async def handle_kds_request(request_data: dict) -> dict:
+    """
+    Handle KDS request (tolerant to any input).
+    Returns response matching real KDS API format.
+    """
     config = storage.get_config("kds")
 
     # Apply delay if configured
@@ -360,7 +364,7 @@ async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, K
         await asyncio.sleep(config.delay_seconds)
 
     # Determine response type based on mode
-    response_status = await determine_response("kds", config, request.dict())
+    response_status = await determine_response("kds", config, request_data)
 
     # Check for service unavailable
     if response_status == ResponseStatus.UNAVAILABLE:
@@ -371,24 +375,26 @@ async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, K
     now = datetime.now(timezone.utc)
 
     if should_succeed:
-        response = KDSSuccessResponse(
-            kds_ticket_id=storage.get_next_kds_ticket_id(),
-            received_at=now.isoformat()
-        )
+        response = {
+            "status": "OK",
+            "kds_ticket_id": storage.get_next_kds_ticket_id(),
+            "received_at": now.isoformat()
+        }
         status = "OK"
     else:
-        response = KDSFailureResponse(
-            error_code="KDS_ERR_01",
-            error_message="KDS reject: kitchen busy (simulated)"
-        )
+        response = {
+            "status": "NOT_OK",
+            "error_code": "KDS_ERR_01",
+            "error_message": "KDS reject: kitchen busy (simulated)"
+        }
         status = "NOT_OK"
 
     # Log the request
     log = LogEntry(
         timestamp=now.isoformat(),
         service="kds",
-        request=request.dict(),
-        response=response.dict(),
+        request=request_data,
+        response=response,
         mode=config.mode.value,
         status=status
     )
@@ -396,6 +402,8 @@ async def handle_kds_request(request: KDSRequest) -> Union[KDSSuccessResponse, K
 
     # Send instant notification
     await send_log_notification(log)
+
+    return response
 
     return response
 

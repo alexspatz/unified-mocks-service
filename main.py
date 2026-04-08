@@ -167,15 +167,17 @@ async def printer_mock(request: Request):
 
 
 # KDS Mock Endpoint
-@app.post("/mocks/kds", response_model=Union[KDSSuccessResponse, KDSFailureResponse])
-async def kds_mock(request: KDSRequest):
+@app.post("/mocks/kds")
+async def kds_mock(request: Request):
     """
     KDS (Kitchen Display System) Mock Endpoint
 
     Simulates kitchen display system behavior with configurable responses.
+    Tolerant to any input JSON format.
     """
     try:
-        response = await handle_kds_request(request)
+        body = await request.json()
+        response = await handle_kds_request(body)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
