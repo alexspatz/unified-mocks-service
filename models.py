@@ -188,6 +188,7 @@ class LogEntry(BaseModel):
 
 class ConfigUpdateRequest(BaseModel):
     payment: Optional[ServiceConfig] = None
+    qr_first_provider: Optional[ServiceConfig] = None
     fiscal: Optional[ServiceConfig] = None
     kds: Optional[ServiceConfig] = None
     printer: Optional[ServiceConfig] = None

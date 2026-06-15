@@ -138,6 +138,92 @@ async def handle_payment_request(request: PaymentRequest) -> PaymentResponse:
     return response
 
 
+async def handle_qr_first_provider_request(request: PaymentRequest) -> PaymentResponse:
+    config = storage.get_config("qr_first_provider")
+
+    # Apply delay if configured
+    if config.delay_seconds > 0:
+        await asyncio.sleep(config.delay_seconds)
+
+    # Determine response type based on mode
+    response_status = await determine_response("qr_first_provider", config, request.dict())
+
+    # Check for service unavailable
+    if response_status == ResponseStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+    should_succeed = response_status == ResponseStatus.SUCCESS
+
+    payment_id = storage.get_next_qr_payment_id()
+    session_id = generate_session_id(request.order_id)
+    now = datetime.now(timezone.utc)
+    payment_date = now.isoformat()
+    completed_at = now.isoformat()
+
+    if should_succeed:
+        auth_code = str(random.randint(100000, 999999))
+        rrn = f"{random.randint(1, 999999):012d}"
+        response = PaymentResponse(
+            payment_id=payment_id,
+            order_id=request.order_id,
+            session_id=session_id,
+            status="SUCCESS",
+            auth_code=auth_code,
+            rrn=rrn,
+            transaction_id="0",
+            terminal_id="00092240",
+            merchant_id="11111111",
+            response_code="00",
+            response_message="ОДОБРЕНО",
+            amount=request.sum,
+            currency_code="643",
+            payment_date=payment_date,
+            completed_at=completed_at,
+            receipt_available=True,
+            field_90_raw=generate_field_90_raw(request.sum, "00", "ОДОБРЕНО", auth_code, rrn),
+            customer_receipt=generate_receipt_text(),
+            merchant_receipt=generate_receipt_text()
+        )
+    else:
+        response = PaymentResponse(
+            payment_id=payment_id,
+            order_id=request.order_id,
+            session_id=session_id,
+            status="DECLINED",
+            auth_code=None,
+            rrn=None,
+            transaction_id="0",
+            terminal_id="00092240",
+            merchant_id="0",
+            response_code="ER3",
+            response_message="ОПЕРАЦИЯ ПРЕРВАНА^TERMINATED.JPG~",
+            amount=request.sum,
+            currency_code="643",
+            payment_date=payment_date,
+            completed_at=completed_at,
+            receipt_available=False,
+            field_90_raw=generate_field_90_raw(request.sum, "ER3", "ОПЕРАЦИЯ ПРЕРВАНА^TERMINATED.JPG~"),
+            customer_receipt=None,
+            merchant_receipt=None
+        )
+
+    # Log the request
+    log = LogEntry(
+        timestamp=now.isoformat(),
+        service="qr_first_provider",
+        request=request.dict(),
+        response=response.dict(),
+        mode=config.mode.value,
+        status=response.status
+    )
+    storage.add_log(log)
+
+    # Send instant notification
+    await send_log_notification(log)
+
+    return response
+
+
 async def handle_fiscal_request(request: FiscalRequest) -> Union[FiscalSuccessResponse, FiscalFailureResponse]:
     config = storage.get_config("fiscal")
 

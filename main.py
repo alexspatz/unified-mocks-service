@@ -11,7 +11,8 @@ from models import (
     ConfigUpdateRequest, LogEntry, ServiceConfig
 )
 from mocks import (
-    handle_payment_request, handle_fiscal_request, handle_kds_request,
+    handle_payment_request, handle_qr_first_provider_request,
+    handle_fiscal_request, handle_kds_request,
     handle_new_fiscal_request, handle_printer_request, set_bot_application
 )
 from storage import storage
@@ -72,6 +73,7 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "payment": "/mocks/payment",
+            "qr_first_provider": "/mocks/QRFirtsProvider",
             "fiscal": "/mocks/fiscal (old format)",
             "fiscal_receipt": "/mocks/fiscal_receipt (new format - tolerant)",
             "printer": "/mocks/printer",
@@ -98,6 +100,23 @@ async def payment_mock(request: PaymentRequest):
     """
     try:
         response = await handle_payment_request(request)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# QR First Provider Mock Endpoint
+@app.post("/mocks/QRFirtsProvider", response_model=PaymentResponse)
+async def qr_first_provider_mock(request: PaymentRequest):
+    """
+    QR First Provider Mock Endpoint
+
+    Simulates a new QR-based payment method with configurable responses.
+    Behaves like the Payment Edge mock (success / failure / manual / sequence / delay),
+    controllable via Telegram and the /mocks/config endpoint.
+    """
+    try:
+        response = await handle_qr_first_provider_request(request)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -212,6 +231,10 @@ async def update_config(request: ConfigUpdateRequest):
         storage.update_config("payment", request.payment)
         updated.append("payment")
 
+    if request.qr_first_provider:
+        storage.update_config("qr_first_provider", request.qr_first_provider)
+        updated.append("qr_first_provider")
+
     if request.fiscal:
         storage.update_config("fiscal", request.fiscal)
         updated.append("fiscal")
@@ -255,6 +278,18 @@ async def payment_status():
     config = storage.get_config("payment")
     return {
         "service": "payment",
+        "mode": config.mode.value,
+        "timeout_seconds": config.timeout_seconds,
+        "default_response": config.default_response
+    }
+
+
+@app.get("/mocks/QRFirtsProvider/status")
+async def qr_first_provider_status():
+    """Get QR First Provider service status"""
+    config = storage.get_config("qr_first_provider")
+    return {
+        "service": "qr_first_provider",
         "mode": config.mode.value,
         "timeout_seconds": config.timeout_seconds,
         "default_response": config.default_response

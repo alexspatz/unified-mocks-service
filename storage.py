@@ -12,6 +12,11 @@ class InMemoryStorage:
                 timeout_seconds=30,
                 default_response="SUCCESS"
             ),
+            "qr_first_provider": ServiceConfig(
+                mode=ServiceMode.AUTO_SUCCESS,
+                timeout_seconds=30,
+                default_response="SUCCESS"
+            ),
             "fiscal": ServiceConfig(
                 mode=ServiceMode.AUTO_SUCCESS,
                 timeout_seconds=30,
@@ -35,6 +40,7 @@ class InMemoryStorage:
 
         # Counters for generating IDs
         self.payment_id_counter = 1809
+        self.qr_payment_id_counter = 5001
         self.fiscal_doc_counter = 1
         self.kds_ticket_counter = 1
 
@@ -75,6 +81,10 @@ class InMemoryStorage:
     def get_next_payment_id(self) -> int:
         self.payment_id_counter += 1
         return self.payment_id_counter
+
+    def get_next_qr_payment_id(self) -> int:
+        self.qr_payment_id_counter += 1
+        return self.qr_payment_id_counter
 
     def get_next_fiscal_doc_number(self) -> str:
         doc_num = f"FD-TEST-{self.fiscal_doc_counter:04d}"
